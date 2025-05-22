@@ -60,4 +60,5 @@ python PythonApplication1.py
 
 - La aplicación ha sido probada y funciona correctamente en Windows
 - Asegúrese de que la impresora ZPL esté conectada y accesible en la red
-- Los archivos CSV deben estar correctamente formateados con las columnas necesarias 
+- Los archivos CSV deben estar correctamente formateados con las columnas necesarias
+- El generador de CSV a partir de Excel está pensado para funcionar con el archivo descargado de Odoo a partir de Inventario -> Productos -> Productos
