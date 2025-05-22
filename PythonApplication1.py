@@ -20,6 +20,7 @@ class MainWindow(QWidget):
     def __init__(self):
         # Constructor de la ventana principal
         super().__init__()
+        
         self.setWindowTitle('Impresión de Etiquetas')
         self.setGeometry(100, 100, 500, 500)  # Posición y tamaño inicial de la ventana
 
@@ -53,15 +54,27 @@ class MainWindow(QWidget):
         # Campos para la Orden de Producción
         self.op_description_label = QLabel('OP:')
         self.op_description_input = QLineEdit()
+        
+        # Campo para versión SGC
+        self.sgc_version_label = QLabel('Versión SGC:')
+        self.sgc_version_input = QLineEdit()
+        self.sgc_version_input.setPlaceholderText('Ej: V1.0')
+
         self.quantity_label = QLabel('Cantidad a Imprimir:')
         self.quantity_spinbox = QSpinBox()
         self.quantity_spinbox.setMinimum(1)
+        self.quantity_spinbox.setMaximum(1000)
         self.quantity_spinbox.setValue(1)
 
         # Layouts para OP y cantidad
         op_layout = QHBoxLayout()
         op_layout.addWidget(self.op_description_label)
         op_layout.addWidget(self.op_description_input)
+
+        # Layout para versión SGC
+        sgc_layout = QHBoxLayout()
+        sgc_layout.addWidget(self.sgc_version_label)
+        sgc_layout.addWidget(self.sgc_version_input)
 
         quantity_layout = QHBoxLayout()
         quantity_layout.addWidget(self.quantity_label)
@@ -78,6 +91,7 @@ class MainWindow(QWidget):
         main_layout.addWidget(self.scroll_area)
         main_layout.addWidget(self.op_description_label)
         main_layout.addWidget(self.op_description_input)
+        main_layout.addLayout(sgc_layout)  # Agregamos el layout de SGC
         main_layout.addWidget(self.quantity_label)
         main_layout.addWidget(self.quantity_spinbox)
         main_layout.addWidget(self.print_button)
@@ -92,27 +106,6 @@ class MainWindow(QWidget):
         # Variables de datos
         self.csv_data = []
         self.selected_product = None
-
-    def item_selected(self, item):
-        # Procesa el elemento seleccionado de la lista
-        texto_item = item.text()
-        partes = texto_item.split(', ')
-        seleccion = {}
-        
-        for parte in partes:
-            clave_valor = parte.split(': ')
-            if len(clave_valor) == 2:
-                seleccion[clave_valor[0].strip()] = clave_valor[1].strip()
-
-        if 'ID' in seleccion:
-            self.selected_product = {
-                'id_producto': seleccion['ID'],
-                'code_128': seleccion['Code'],
-                'nombre': seleccion['Nombre']
-            }
-            print(f"Producto seleccionado: {self.selected_product}")
-        else:
-            self.selected_product = None
 
     def open_file_dialog(self):
         # Abre diálogo para seleccionar archivo CSV
@@ -131,8 +124,10 @@ class MainWindow(QWidget):
                 print(f"Archivo CSV leído con {len(self.csv_data)} registros.")
             except FileNotFoundError:
                 print(f"Error: No se pudo encontrar el archivo en la ruta: {file_path}")
+            except UnicodeDecodeError:
+                print(f"Error: El archivo no está en la codificación UTF-8 esperada")
             except Exception as e:
-                print(f"Error al leer el archivo CSV: {e}")
+                print(f"Error al leer el archivo CSV: {str(e)}")
 
     def perform_search(self):
         # Realiza búsqueda en los datos del CSV
@@ -159,10 +154,32 @@ class MainWindow(QWidget):
         self.results_area.clear()
         self.selected_product = None
 
+    def item_selected(self, item):
+        # Procesa el elemento seleccionado de la lista
+        texto_item = item.text()
+        partes = texto_item.split(', ')
+        seleccion = {}
+        
+        for parte in partes:
+            clave_valor = parte.split(': ')
+            if len(clave_valor) == 2:
+                seleccion[clave_valor[0].strip()] = clave_valor[1].strip()
+
+        if 'ID' in seleccion:
+            self.selected_product = {
+                'id_producto': seleccion['ID'],
+                'code_128': seleccion['Code'],
+                'nombre': seleccion['Nombre']
+            }
+            print(f"Producto seleccionado: {self.selected_product}")
+        else:
+            self.selected_product = None
+
     def handle_print(self):
         # Maneja la impresión de etiquetas
         if self.selected_product:
             op_description = self.op_description_input.text()
+            sgc_version = self.sgc_version_input.text()  # Obtener versión SGC
             quantity = self.quantity_spinbox.value()
             id_producto = self.selected_product.get('id_producto', 'N/A')
             code_128 = self.selected_product.get('code_128', 'N/A')
@@ -173,27 +190,39 @@ class MainWindow(QWidget):
                 printer_ip = "10.10.2.34"
                 printer_port = 9100
 
+                # Convertir caracteres especiales a Latin-1 para la impresora
+                nombre_producto_print = nombre_producto.encode('latin1', errors='replace').decode('latin1')
+                op_description_print = op_description.encode('latin1', errors='replace').decode('latin1')
+                sgc_version_print = sgc_version.encode('latin1', errors='replace').decode('latin1')
+
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                     sock.connect((printer_ip, printer_port))
                     for i in range(1, quantity + 1):
                         zpl_label = f"""^XA
-                        ^FO35,35^A0N,18,18^FD{nombre_producto}^FS
-                        ^FO35,60^BCN,75,Y,N,N^FD{id_producto}^FS
-                        ^FO35,168^A0N,20,20^FDOP:{op_description}^FS
-                        ^FO35,188^A0N,18,18^FD{i}/{quantity}^FS
+                        ^FO115,35^A0N,18,18^FD{nombre_producto_print}^FS
+                        ^FO115,60^BCN,75,Y,N,N^FD{id_producto}^FS
+                        ^FO115,168^A0N,20,20^FD{op_description_print}^FS
+                        ^FO115,188^A0N,18,18^FD{i}/{quantity}^FS
+                        ^FO370,60^A0R,18,18^FD{sgc_version_print}^FS
                         ^PQ1,1,1,Y^XZ"""
 
                         print(f"--- Enviando etiqueta {i}/{quantity} ---")
                         print(zpl_label)
-                        sock.sendall(zpl_label.encode('utf-8'))
-                        print(f"Se enviaron {quantity} etiquetas a la impresora!")
+                        sock.sendall(zpl_label.encode('latin1'))
+                    print(f"Se enviaron {quantity} etiquetas a la impresora!")
 
             except ConnectionRefusedError:
                 self.results_area.addItem(f"Error: No se pudo conectar a la impresora en {printer_ip}:{printer_port}. Asegúrate de que la impresora está encendida y conectada a la red.")
             except Exception as e:
-                self.results_area.addItem(f"Error al enviar a la impresora: {e}")
+                self.results_area.addItem(f"Error al enviar a la impresora: {str(e)}")
         else:
             self.results_area.addItem('Por favor, busca y selecciona un producto primero.')
+
+    def open_transformer(self):
+        # Crear y mostrar la ventana del transformador
+        if self.transformer_window is None:
+            self.transformer_window = TransformadorWindow()
+        self.transformer_window.show()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
