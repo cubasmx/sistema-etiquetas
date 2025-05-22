@@ -8,26 +8,34 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QLineEdit,
     QVBoxLayout,
-    QFileDialog,
     QLabel,
     QScrollArea,
-    QHBoxLayout
+    QHBoxLayout,
+    QMessageBox
 )
-import csv
 import socket
+from odoo_client import OdooClient
 
 class MainWindow(QWidget):
     def __init__(self):
         # Constructor de la ventana principal
         super().__init__()
-        
         self.setWindowTitle('Impresión de Etiquetas')
-        self.setGeometry(100, 100, 500, 500)  # Posición y tamaño inicial de la ventana
+        self.setGeometry(100, 100, 500, 500)
+
+        try:
+            # Inicializar cliente de Odoo
+            self.odoo_client = OdooClient()
+            self.connection_status = True
+        except Exception as e:
+            self.connection_status = False
+            QMessageBox.warning(self, "Error de Conexión", 
+                              f"No se pudo conectar a Odoo: {str(e)}\n"
+                              "La aplicación funcionará en modo offline.")
 
         # Botones y campos de entrada
-        self.import_button = QPushButton('Examinar...')
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText('Buscar ID de Producto')
+        self.search_input.setPlaceholderText('Buscar ID o Nombre de Producto')
         self.search_button = QPushButton('Buscar')
         self.clear_button = QPushButton('Limpiar')
 
@@ -85,77 +93,51 @@ class MainWindow(QWidget):
 
         # Layout principal
         main_layout = QVBoxLayout(self)
-        main_layout.addWidget(self.import_button)
         main_layout.addLayout(search_layout)
         main_layout.addWidget(self.result_label)
         main_layout.addWidget(self.scroll_area)
-        main_layout.addWidget(self.op_description_label)
-        main_layout.addWidget(self.op_description_input)
-        main_layout.addLayout(sgc_layout)  # Agregamos el layout de SGC
+        main_layout.addLayout(op_layout)
+        main_layout.addLayout(sgc_layout)
         main_layout.addWidget(self.quantity_label)
         main_layout.addWidget(self.quantity_spinbox)
         main_layout.addWidget(self.print_button)
 
         # Conexiones de señales
-        self.import_button.clicked.connect(self.open_file_dialog)
         self.search_button.clicked.connect(self.perform_search)
         self.clear_button.clicked.connect(self.clear_search_and_results)
         self.search_input.returnPressed.connect(self.perform_search)
         self.print_button.clicked.connect(self.handle_print)
 
         # Variables de datos
-        self.csv_data = []
         self.selected_product = None
-
-    def open_file_dialog(self):
-        # Abre diálogo para seleccionar archivo CSV
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Seleccionar archivo CSV",
-            "",
-            "Archivos CSV (*.csv);;Todos los archivos (*)"
-        )
-
-        if file_path:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as csvfile:
-                    reader = csv.DictReader(csvfile)
-                    self.csv_data = list(reader)
-                print(f"Archivo CSV leído con {len(self.csv_data)} registros.")
-            except FileNotFoundError:
-                print(f"Error: No se pudo encontrar el archivo en la ruta: {file_path}")
-            except UnicodeDecodeError:
-                print(f"Error: El archivo no está en la codificación UTF-8 esperada")
-            except Exception as e:
-                print(f"Error al leer el archivo CSV: {str(e)}")
 
     def perform_search(self):
-        # Realiza búsqueda en los datos del CSV
-        text = self.search_input.text()
-        if not self.csv_data:
-            self.results_area.addItem('Por favor, importa un archivo CSV primero.')
+        """Realiza búsqueda en Odoo"""
+        if not self.connection_status:
+            QMessageBox.warning(self, "Error", "No hay conexión con Odoo")
             return
 
-        results = []
-        for row in self.csv_data:
-            if text.lower() in row.get('id_producto', '').lower():
-                results.append(f"ID: {row.get('id_producto', 'N/A')}, Code: {row.get('code_128', 'N/A')}, Nombre: {row.get('nombre', 'N/A')}")
+        query = self.search_input.text()
+        if not query:
+            return
 
-        self.results_area.clear()
-        if results:
-            for result in results:
-                self.results_area.addItem(result)
-        else:
-            self.results_area.addItem(f'No se encontraron coincidencias para: "{text}"')
-
-    def clear_search_and_results(self):
-        # Limpia el campo de búsqueda y resultados
-        self.search_input.clear()
-        self.results_area.clear()
-        self.selected_product = None
+        try:
+            products = self.odoo_client.search_products(query)
+            
+            self.results_area.clear()
+            if products:
+                for product in products:
+                    item_text = f"ID: {product['default_code'] or 'N/A'}, "
+                    item_text += f"Nombre: {product['name']}"
+                    self.results_area.addItem(item_text)
+            else:
+                self.results_area.addItem(f'No se encontraron coincidencias para: "{query}"')
+                
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Error al buscar productos: {str(e)}")
 
     def item_selected(self, item):
-        # Procesa el elemento seleccionado de la lista
+        """Procesa el elemento seleccionado de la lista"""
         texto_item = item.text()
         partes = texto_item.split(', ')
         seleccion = {}
@@ -168,7 +150,6 @@ class MainWindow(QWidget):
         if 'ID' in seleccion:
             self.selected_product = {
                 'id_producto': seleccion['ID'],
-                'code_128': seleccion['Code'],
                 'nombre': seleccion['Nombre']
             }
             print(f"Producto seleccionado: {self.selected_product}")
@@ -176,13 +157,12 @@ class MainWindow(QWidget):
             self.selected_product = None
 
     def handle_print(self):
-        # Maneja la impresión de etiquetas
+        """Maneja la impresión de etiquetas"""
         if self.selected_product:
             op_description = self.op_description_input.text()
-            sgc_version = self.sgc_version_input.text()  # Obtener versión SGC
+            sgc_version = self.sgc_version_input.text()
             quantity = self.quantity_spinbox.value()
             id_producto = self.selected_product.get('id_producto', 'N/A')
-            code_128 = self.selected_product.get('code_128', 'N/A')
             nombre_producto = self.selected_product.get('nombre', 'N/A')
 
             print("--- Generando etiquetas ZPL ---")
@@ -190,20 +170,20 @@ class MainWindow(QWidget):
                 printer_ip = "10.10.2.34"
                 printer_port = 9100
 
-                # Convertir caracteres especiales a Latin-1 para la impresora
-                nombre_producto_print = nombre_producto.encode('latin1', errors='replace').decode('latin1')
-                op_description_print = op_description.encode('latin1', errors='replace').decode('latin1')
-                sgc_version_print = sgc_version.encode('latin1', errors='replace').decode('latin1')
-
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                     sock.connect((printer_ip, printer_port))
                     for i in range(1, quantity + 1):
+                        # Convertir a Latin-1 para la impresora
+                        nombre_producto_print = nombre_producto.encode('latin1', errors='replace').decode('latin1')
+                        op_description_print = op_description.encode('latin1', errors='replace').decode('latin1')
+                        sgc_version_print = sgc_version.encode('latin1', errors='replace').decode('latin1')
+
                         zpl_label = f"""^XA
                         ^FO115,35^A0N,18,18^FD{nombre_producto_print}^FS
                         ^FO115,60^BCN,75,Y,N,N^FD{id_producto}^FS
                         ^FO115,168^A0N,20,20^FD{op_description_print}^FS
                         ^FO115,188^A0N,18,18^FD{i}/{quantity}^FS
-                        ^FO370,60^A0R,18,18^FD{sgc_version_print}^FS
+                        ^FO400,35^A0R,18,18^FD{sgc_version_print}^FS
                         ^PQ1,1,1,Y^XZ"""
 
                         print(f"--- Enviando etiqueta {i}/{quantity} ---")
@@ -212,17 +192,19 @@ class MainWindow(QWidget):
                     print(f"Se enviaron {quantity} etiquetas a la impresora!")
 
             except ConnectionRefusedError:
-                self.results_area.addItem(f"Error: No se pudo conectar a la impresora en {printer_ip}:{printer_port}. Asegúrate de que la impresora está encendida y conectada a la red.")
+                QMessageBox.warning(self, "Error", 
+                    f"No se pudo conectar a la impresora en {printer_ip}:{printer_port}.\n"
+                    "Asegúrate de que la impresora está encendida y conectada a la red.")
             except Exception as e:
-                self.results_area.addItem(f"Error al enviar a la impresora: {str(e)}")
+                QMessageBox.warning(self, "Error", f"Error al enviar a la impresora: {str(e)}")
         else:
-            self.results_area.addItem('Por favor, busca y selecciona un producto primero.')
+            QMessageBox.warning(self, "Error", "Por favor, busca y selecciona un producto primero.")
 
-    def open_transformer(self):
-        # Crear y mostrar la ventana del transformador
-        if self.transformer_window is None:
-            self.transformer_window = TransformadorWindow()
-        self.transformer_window.show()
+    def clear_search_and_results(self):
+        """Limpia el campo de búsqueda y resultados"""
+        self.search_input.clear()
+        self.results_area.clear()
+        self.selected_product = None
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
