@@ -11,10 +11,86 @@ from PyQt6.QtWidgets import (
     QLabel,
     QScrollArea,
     QHBoxLayout,
-    QMessageBox
+    QMessageBox,
+    QDialog,
+    QFormLayout
 )
 import socket
 from odoo_client import OdooClient
+import json
+import os
+
+class ConfigDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('Configuración de Odoo')
+        self.setModal(True)
+        
+        # Crear layout
+        layout = QFormLayout()
+        
+        # Campos de configuración
+        self.url_input = QLineEdit()
+        self.db_input = QLineEdit()
+        self.username_input = QLineEdit()
+        self.password_input = QLineEdit()
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.port_input = QSpinBox()
+        self.port_input.setRange(1, 65535)
+        self.port_input.setValue(443)
+        
+        # Agregar campos al layout
+        layout.addRow('URL:', self.url_input)
+        layout.addRow('Base de datos:', self.db_input)
+        layout.addRow('Usuario:', self.username_input)
+        layout.addRow('Contraseña:', self.password_input)
+        layout.addRow('Puerto:', self.port_input)
+        
+        # Botones
+        button_layout = QHBoxLayout()
+        save_button = QPushButton('Guardar')
+        cancel_button = QPushButton('Cancelar')
+        button_layout.addWidget(save_button)
+        button_layout.addWidget(cancel_button)
+        
+        # Conectar señales
+        save_button.clicked.connect(self.accept)
+        cancel_button.clicked.connect(self.reject)
+        
+        # Layout principal
+        main_layout = QVBoxLayout()
+        main_layout.addLayout(layout)
+        main_layout.addLayout(button_layout)
+        self.setLayout(main_layout)
+        
+        # Cargar configuración actual
+        self.load_current_config()
+    
+    def load_current_config(self):
+        try:
+            with open('odoo_config.py', 'r') as f:
+                content = f.read()
+                # Extraer el diccionario de configuración usando eval
+                start = content.find('{')
+                end = content.rfind('}') + 1
+                if start > -1 and end > 0:
+                    config_dict = eval(content[start:end])
+                    self.url_input.setText(config_dict.get('url', ''))
+                    self.db_input.setText(config_dict.get('db', ''))
+                    self.username_input.setText(config_dict.get('username', ''))
+                    self.password_input.setText(config_dict.get('password', ''))
+                    self.port_input.setValue(config_dict.get('port', 443))
+        except Exception as e:
+            print(f"Error al cargar la configuración: {str(e)}")
+    
+    def get_config(self):
+        return {
+            'url': self.url_input.text(),
+            'db': self.db_input.text(),
+            'username': self.username_input.text(),
+            'password': self.password_input.text(),
+            'port': self.port_input.value()
+        }
 
 class MainWindow(QWidget):
     def __init__(self):
@@ -32,6 +108,10 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "Error de Conexión", 
                               f"No se pudo conectar a Odoo: {str(e)}\n"
                               "La aplicación funcionará en modo offline.")
+
+        # Botón de configuración
+        self.config_button = QPushButton('⚙️ Configuración')
+        self.config_button.clicked.connect(self.show_config_dialog)
 
         # Botones y campos de entrada
         self.search_input = QLineEdit()
@@ -93,6 +173,7 @@ class MainWindow(QWidget):
 
         # Layout principal
         main_layout = QVBoxLayout(self)
+        main_layout.addWidget(self.config_button)
         main_layout.addLayout(search_layout)
         main_layout.addWidget(self.result_label)
         main_layout.addWidget(self.scroll_area)
@@ -205,6 +286,33 @@ class MainWindow(QWidget):
         self.search_input.clear()
         self.results_area.clear()
         self.selected_product = None
+
+    def show_config_dialog(self):
+        """Muestra el diálogo de configuración"""
+        dialog = ConfigDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            config = dialog.get_config()
+            try:
+                # Guardar la configuración
+                config_content = f"""# -*- coding: utf-8 -*-
+
+# Configuración de conexión a Odoo
+ODOO_CONFIG = {json.dumps(config, indent=4)}"""
+                
+                with open('odoo_config.py', 'w') as f:
+                    f.write(config_content)
+                
+                # Reiniciar el cliente de Odoo
+                try:
+                    self.odoo_client = OdooClient()
+                    self.connection_status = True
+                    QMessageBox.information(self, "Éxito", "Configuración guardada y conexión establecida correctamente.")
+                except Exception as e:
+                    self.connection_status = False
+                    QMessageBox.warning(self, "Error de Conexión", 
+                                      f"No se pudo conectar a Odoo con la nueva configuración: {str(e)}")
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"Error al guardar la configuración: {str(e)}")
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
