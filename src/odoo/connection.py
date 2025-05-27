@@ -131,11 +131,12 @@ class OdooConnection:
         except Exception as e:
             raise ConnectionError(f"Error al obtener productos: {str(e)}")
     
-    def get_bom_data(self, product_id: int) -> Dict[str, Any]:
+    def get_bom_data(self, product_id: int, level: int = 0) -> Dict[str, Any]:
         """
-        Obtiene los datos de la lista de materiales para un producto
+        Obtiene los datos de la lista de materiales para un producto, incluyendo sub-BOMs
         Args:
             product_id: ID del producto
+            level: Nivel de profundidad actual (para BOMs anidadas)
         Returns:
             Dict: Datos de la BOM
         """
@@ -155,7 +156,7 @@ class OdooConnection:
                     ['active', '=', True]
                 ]],
                 {
-                    'fields': ['product_qty', 'code', 'product_uom_id', 'bom_line_ids'],
+                    'fields': ['product_qty', 'code', 'product_uom_id', 'bom_line_ids', 'product_tmpl_id'],
                     'limit': 1
                 }
             )
@@ -179,6 +180,7 @@ class OdooConnection:
                         'product_qty',
                         'product_uom_id',
                         'sequence',
+                        'child_bom_id',
                     ]
                 }
             )
@@ -190,8 +192,32 @@ class OdooConnection:
                     'product_id': line['product_id'],  # Esto ya viene como tupla (id, name)
                     'product_qty': float(line['product_qty']),  # Convertir a float por si acaso
                     'product_uom_id': line['product_uom_id'],  # Esto ya viene como tupla (id, name)
-                    'sequence': line['sequence']
+                    'sequence': line['sequence'],
+                    'level': level,
+                    'sub_bom': None
                 }
+                
+                # Si la línea tiene una BOM hija, obtenerla recursivamente
+                if line['child_bom_id']:
+                    try:
+                        # Obtener el product_tmpl_id del producto en la línea
+                        product_info = self.models.execute_kw(
+                            self.config['database'],
+                            self.uid,
+                            self.config['password'],
+                            'product.product',
+                            'read',
+                            [line['product_id'][0]],
+                            {'fields': ['product_tmpl_id']}
+                        )
+                        if product_info:
+                            child_product_tmpl_id = product_info[0]['product_tmpl_id'][0]
+                            # Obtener la BOM del subproducto
+                            sub_bom = self.get_bom_data(child_product_tmpl_id, level + 1)
+                            processed_line['sub_bom'] = sub_bom
+                    except Exception as e:
+                        print(f"Error al obtener sub-BOM: {str(e)}")
+                
                 processed_lines.append(processed_line)
             
             # Ordenar las líneas por secuencia
@@ -203,7 +229,9 @@ class OdooConnection:
                 'product_qty': float(bom['product_qty']),
                 'code': str(bom['code']) if bom['code'] else '',
                 'uom': str(bom['product_uom_id'][1]) if bom['product_uom_id'] else '',
-                'lines': processed_lines
+                'product_name': str(bom['product_tmpl_id'][1]),
+                'lines': processed_lines,
+                'level': level
             }
             
         except Exception as e:

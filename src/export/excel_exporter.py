@@ -1,5 +1,5 @@
 from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, NamedStyle
 from openpyxl.utils import get_column_letter
 from datetime import datetime
 from typing import Dict, List, Any
@@ -10,6 +10,7 @@ class ExcelExporter:
         self.wb = Workbook()
         self.ws = self.wb.active
         self.ws.title = "Lista de Materiales"
+        self.current_row = 1
         
         # Estilos
         self.header_font = Font(bold=True, color="FFFFFF")
@@ -21,6 +22,69 @@ class ExcelExporter:
             top=Side(style='thin'),
             bottom=Side(style='thin')
         )
+        
+        # Estilo para niveles
+        self.level_styles = {}
+        for i in range(5):  # Soportar hasta 5 niveles de profundidad
+            style = NamedStyle(name=f'level_{i}')
+            style.font = Font(bold=True if i == 0 else False)
+            style.fill = PatternFill(
+                start_color="E6E6E6" if i % 2 == 0 else "FFFFFF",
+                end_color="E6E6E6" if i % 2 == 0 else "FFFFFF",
+                fill_type="solid"
+            )
+            self.level_styles[i] = style
+            self.wb.add_named_style(style)
+    
+    def write_bom_line(self, line: Dict[str, Any], parent_qty: float = 1.0):
+        """
+        Escribe una línea de la BOM y sus sub-BOMs si existen
+        Args:
+            line: Línea de la BOM
+            parent_qty: Cantidad del producto padre para cálculos acumulados
+        """
+        level = line.get('level', 0)
+        style = self.level_styles[min(level, 4)]  # Limitar a 5 niveles de estilo
+        
+        # Calcular la cantidad acumulada
+        qty = line['product_qty'] * parent_qty
+        
+        # Añadir indentación según el nivel
+        indent = "    " * level
+        
+        # Código
+        cell = self.ws.cell(row=self.current_row, column=1)
+        cell.value = line['product_id'][1].split(']')[0].strip('[') if '][' in line['product_id'][1] else ''
+        cell.border = self.border
+        cell.alignment = Alignment(horizontal="center")
+        cell.style = style
+        
+        # Componente
+        cell = self.ws.cell(row=self.current_row, column=2)
+        cell.value = indent + (line['product_id'][1].split(']')[-1].strip() if '][' in line['product_id'][1] else line['product_id'][1])
+        cell.border = self.border
+        cell.style = style
+        
+        # Cantidad
+        cell = self.ws.cell(row=self.current_row, column=3)
+        cell.value = qty
+        cell.border = self.border
+        cell.alignment = Alignment(horizontal="center")
+        cell.style = style
+        
+        # Unidad
+        cell = self.ws.cell(row=self.current_row, column=4)
+        cell.value = line['product_uom_id'][1]
+        cell.border = self.border
+        cell.alignment = Alignment(horizontal="center")
+        cell.style = style
+        
+        self.current_row += 1
+        
+        # Si tiene sub-BOM, procesar recursivamente
+        if line.get('sub_bom'):
+            for sub_line in line['sub_bom']['lines']:
+                self.write_bom_line(sub_line, qty)
     
     def export_bom(self, bom_data: Dict[str, Any], product_name: str) -> str:
         """
@@ -35,43 +99,24 @@ class ExcelExporter:
             # Configurar encabezados
             headers = ["Código", "Componente", "Cantidad", "Unidad"]
             for col, header in enumerate(headers, start=1):
-                cell = self.ws.cell(row=1, column=col)
+                cell = self.ws.cell(row=self.current_row, column=col)
                 cell.value = header
                 cell.font = self.header_font
                 cell.fill = self.header_fill
                 cell.alignment = self.header_alignment
                 cell.border = self.border
             
+            self.current_row += 1
+            
             # Ajustar ancho de columnas
             self.ws.column_dimensions['A'].width = 15  # Código
-            self.ws.column_dimensions['B'].width = 40  # Componente
+            self.ws.column_dimensions['B'].width = 60  # Componente (más ancho para indentación)
             self.ws.column_dimensions['C'].width = 12  # Cantidad
             self.ws.column_dimensions['D'].width = 12  # Unidad
             
-            # Añadir datos
-            for row, line in enumerate(bom_data['lines'], start=2):
-                # Código
-                cell = self.ws.cell(row=row, column=1)
-                cell.value = line['product_id'][1].split(']')[0].strip('[') if '][' in line['product_id'][1] else ''
-                cell.border = self.border
-                cell.alignment = Alignment(horizontal="center")
-                
-                # Componente
-                cell = self.ws.cell(row=row, column=2)
-                cell.value = line['product_id'][1].split(']')[-1].strip() if '][' in line['product_id'][1] else line['product_id'][1]
-                cell.border = self.border
-                
-                # Cantidad
-                cell = self.ws.cell(row=row, column=3)
-                cell.value = line['product_qty']
-                cell.border = self.border
-                cell.alignment = Alignment(horizontal="center")
-                
-                # Unidad
-                cell = self.ws.cell(row=row, column=4)
-                cell.value = line['product_uom_id'][1]
-                cell.border = self.border
-                cell.alignment = Alignment(horizontal="center")
+            # Procesar cada línea de la BOM
+            for line in bom_data['lines']:
+                self.write_bom_line(line)
             
             # Crear directorio de exportación si no existe
             export_dir = "exports"
