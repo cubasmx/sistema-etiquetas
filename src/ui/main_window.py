@@ -1,28 +1,13 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, 
                                QPushButton, QComboBox, QLabel, QMessageBox,
                                QApplication)
-from PySide6.QtCore import Qt, Slot, QThread, Signal
+from PySide6.QtCore import Qt, Slot, QTimer, QEventLoop
 from src.ui.config_dialog import ConfigDialog
 from src.odoo.odoo_client import OdooClient
 import json
 import os
 import sys
 import traceback
-
-class OdooWorker(QThread):
-    finished = Signal(list)
-    error = Signal(str)
-    
-    def __init__(self, odoo_client):
-        super().__init__()
-        self.odoo_client = odoo_client
-    
-    def run(self):
-        try:
-            products = self.odoo_client.get_products()
-            self.finished.emit(products)
-        except Exception as e:
-            self.error.emit(str(e))
 
 def exception_handler(exc_type, exc_value, exc_traceback):
     """Manejador global de excepciones no capturadas"""
@@ -96,8 +81,9 @@ class MainWindow(QMainWindow):
             # Inicializar cliente Odoo
             print("Inicializando cliente Odoo...")
             self.odoo_client = None
-            self.worker = None
-            self.load_config_and_connect()
+            
+            # Usar QTimer para cargar la configuración después de que la ventana se muestre
+            QTimer.singleShot(0, self.load_config_and_connect)
             print("Inicialización completada...")
             
         except Exception as e:
@@ -121,7 +107,7 @@ class MainWindow(QMainWindow):
                 )
                 
                 # Cargar productos
-                self.load_products()
+                QTimer.singleShot(0, self.load_products)
             else:
                 QMessageBox.warning(
                     self,
@@ -145,16 +131,41 @@ class MainWindow(QMainWindow):
             self.product_combo.addItem("Cargando productos...", None)
             self.product_combo.setEnabled(False)
             self.export_button.setEnabled(False)
+            QApplication.processEvents()
             
-            # Crear y configurar el worker thread
-            if self.worker is not None:
-                self.worker.quit()
-                self.worker.wait()
+            # Crear un event loop local para la operación asíncrona
+            loop = QEventLoop()
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(loop.quit)
             
-            self.worker = OdooWorker(self.odoo_client)
-            self.worker.finished.connect(self.on_products_loaded)
-            self.worker.error.connect(self.on_products_error)
-            self.worker.start()
+            def do_load():
+                try:
+                    products = self.odoo_client.get_products()
+                    self.product_combo.clear()
+                    self.product_combo.setEnabled(True)
+                    
+                    if not products:
+                        self.product_combo.addItem("No se encontraron productos con BOM", None)
+                    else:
+                        for product in products:
+                            self.product_combo.addItem(product['name'], product['id'])
+                    print("Productos cargados exitosamente")
+                except Exception as e:
+                    print(f"Error al cargar productos: {str(e)}")
+                    self.product_combo.clear()
+                    self.product_combo.setEnabled(True)
+                    QMessageBox.critical(
+                        self,
+                        "Error",
+                        f"Error al cargar productos: {str(e)}"
+                    )
+                finally:
+                    timer.start(0)
+            
+            # Ejecutar la carga en el próximo ciclo de eventos
+            QTimer.singleShot(0, do_load)
+            loop.exec()
             
         except Exception as e:
             print(f"Error en load_products: {str(e)}")
@@ -167,36 +178,6 @@ class MainWindow(QMainWindow):
                 f"Error al cargar productos: {str(e)}"
             )
 
-    def on_products_loaded(self, products):
-        """Callback cuando los productos se han cargado"""
-        try:
-            print(f"Productos obtenidos: {len(products)}")
-            self.product_combo.clear()
-            self.product_combo.setEnabled(True)
-            
-            if not products:
-                self.product_combo.addItem("No se encontraron productos con BOM", None)
-                return
-                
-            for product in products:
-                self.product_combo.addItem(product['name'], product['id'])
-            print("Productos cargados exitosamente")
-            
-        except Exception as e:
-            print(f"Error en on_products_loaded: {str(e)}")
-            traceback.print_exc()
-
-    def on_products_error(self, error_msg):
-        """Callback cuando hay un error al cargar productos"""
-        print(f"Error al cargar productos: {error_msg}")
-        self.product_combo.clear()
-        self.product_combo.setEnabled(True)
-        QMessageBox.critical(
-            self,
-            "Error",
-            f"Error al cargar productos: {error_msg}"
-        )
-
     @Slot()
     def show_config_dialog(self):
         """Muestra el diálogo de configuración"""
@@ -204,7 +185,7 @@ class MainWindow(QMainWindow):
             print("Mostrando diálogo de configuración...")
             dialog = ConfigDialog(self)
             if dialog.exec():
-                self.load_config_and_connect()
+                QTimer.singleShot(0, self.load_config_and_connect)
             print("Diálogo de configuración cerrado")
         except Exception as e:
             print(f"Error en show_config_dialog: {str(e)}")
@@ -221,17 +202,37 @@ class MainWindow(QMainWindow):
                 self.export_button.setText("Exportando...")
                 QApplication.processEvents()
                 
-                filename = self.odoo_client.export_bom(product_id)
-                print(f"BOM exportada a: {filename}")
+                # Crear un event loop local para la operación asíncrona
+                loop = QEventLoop()
+                timer = QTimer()
+                timer.setSingleShot(True)
+                timer.timeout.connect(loop.quit)
                 
-                self.export_button.setEnabled(True)
-                self.export_button.setText("Exportar BOM")
+                def do_export():
+                    try:
+                        filename = self.odoo_client.export_bom(product_id)
+                        print(f"BOM exportada a: {filename}")
+                        QMessageBox.information(
+                            self,
+                            "Éxito",
+                            f"BOM exportada correctamente a:\n{filename}"
+                        )
+                    except Exception as e:
+                        print(f"Error al exportar BOM: {str(e)}")
+                        QMessageBox.critical(
+                            self,
+                            "Error",
+                            f"Error al exportar BOM: {str(e)}"
+                        )
+                    finally:
+                        self.export_button.setEnabled(True)
+                        self.export_button.setText("Exportar BOM")
+                        timer.start(0)
                 
-                QMessageBox.information(
-                    self,
-                    "Éxito",
-                    f"BOM exportada correctamente a:\n{filename}"
-                )
+                # Ejecutar la exportación en el próximo ciclo de eventos
+                QTimer.singleShot(0, do_export)
+                loop.exec()
+                
         except Exception as e:
             print(f"Error en export_bom: {str(e)}")
             traceback.print_exc()
@@ -282,4 +283,4 @@ def main():
 
 if __name__ == '__main__':
     print("Iniciando programa...")
-    sys.exit(main()) 
+    sys.exit(main())                                                                                                                                                                                                                                                                                                                    
