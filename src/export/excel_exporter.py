@@ -135,7 +135,6 @@ class ExcelExporter:
             "Centro de trabajo",
             "Tiempo (min)",
             "Eficiencia",
-            "Capacidad",
             "Costo/hora",
             "Costo Total"
         ]
@@ -154,9 +153,8 @@ class ExcelExporter:
         self.ws.column_dimensions['C'].width = 30  # Centro de trabajo
         self.ws.column_dimensions['D'].width = 15  # Tiempo
         self.ws.column_dimensions['E'].width = 12  # Eficiencia
-        self.ws.column_dimensions['F'].width = 12  # Capacidad
-        self.ws.column_dimensions['G'].width = 15  # Costo/hora
-        self.ws.column_dimensions['H'].width = 15  # Costo Total
+        self.ws.column_dimensions['F'].width = 15  # Costo/hora
+        self.ws.column_dimensions['G'].width = 15  # Costo Total
         
         self.current_row += 1
         total_operation_cost = 0.0
@@ -199,17 +197,9 @@ class ExcelExporter:
             cell.style = self.operation_style
             cell.number_format = '0%'
             
-            # Capacidad
-            cell = self.ws.cell(row=self.current_row, column=6)
-            cell.value = op.get('capacity', 1.0)
-            cell.border = self.border
-            cell.alignment = Alignment(horizontal="center")
-            cell.style = self.operation_style
-            cell.number_format = '#,##0.00'
-            
             # Costo por hora (del centro de trabajo)
             if op['workcenter_id']:
-                cell = self.ws.cell(row=self.current_row, column=7)
+                cell = self.ws.cell(row=self.current_row, column=6)
                 cell.value = float(op.get('costs_hour', 0.0))
                 cell.border = self.border
                 cell.alignment = Alignment(horizontal="right")
@@ -217,7 +207,7 @@ class ExcelExporter:
                 cell.number_format = '"$"#,##0.00'
             
             # Costo total de la operación
-            cell = self.ws.cell(row=self.current_row, column=8)
+            cell = self.ws.cell(row=self.current_row, column=7)
             operation_cost = float(op.get('operation_cost', 0.0))
             cell.value = operation_cost
             cell.border = self.border
@@ -230,11 +220,11 @@ class ExcelExporter:
         
         # Agregar total de costos de operaciones
         self.current_row += 1
-        cell = self.ws.cell(row=self.current_row, column=7)
+        cell = self.ws.cell(row=self.current_row, column=6)
         cell.value = "Costo Total Operaciones:"
         cell.font = Font(bold=True)
         
-        cell = self.ws.cell(row=self.current_row, column=8)
+        cell = self.ws.cell(row=self.current_row, column=7)
         cell.value = total_operation_cost
         cell.font = Font(bold=True)
         cell.alignment = Alignment(horizontal="right")

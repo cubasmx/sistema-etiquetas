@@ -225,8 +225,7 @@ class OdooConnection:
                             {
                                 'fields': [
                                     'costs_hour',
-                                    'time_efficiency',
-                                    'capacity'
+                                    'time_efficiency'
                                 ]
                             }
                         )[0]
@@ -235,7 +234,6 @@ class OdooConnection:
                         time_hours = float(op['time_cycle_manual'] or op['time_cycle'] or 0.0) / 60.0  # Convertir minutos a horas
                         op['operation_cost'] = time_hours * float(workcenter.get('costs_hour', 0.0))
                         op['efficiency'] = float(workcenter.get('time_efficiency', 1.0))
-                        op['capacity'] = float(workcenter.get('capacity', 1.0))
                 
                 # Ordenar operaciones por secuencia
                 operations.sort(key=lambda x: x['sequence'])
