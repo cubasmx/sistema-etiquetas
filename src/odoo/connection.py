@@ -162,7 +162,7 @@ class OdooConnection:
                         'product_uom_id',
                         'bom_line_ids',
                         'product_tmpl_id',
-                        'operation_ids'
+                        'routing_id'
                     ],
                     'limit': 1
                 }
@@ -191,25 +191,39 @@ class OdooConnection:
             
             # Obtener operaciones de fabricación
             operations = []
-            if bom.get('operation_ids'):
-                operations = self.models.execute_kw(
+            if bom.get('routing_id'):
+                # Obtener las operaciones de la ruta de fabricación
+                routing = self.models.execute_kw(
                     self.config['database'],
                     self.uid,
                     self.config['password'],
-                    'mrp.routing.workcenter',
+                    'mrp.routing',
                     'read',
-                    [bom['operation_ids']],
+                    [bom['routing_id'][0]],
                     {
-                        'fields': [
-                            'name',
-                            'workcenter_id',
-                            'time_cycle_manual',
-                            'time_cycle',
-                            'sequence',
-                            'active'
-                        ]
+                        'fields': ['operation_ids']
                     }
-                )
+                )[0]
+                
+                if routing.get('operation_ids'):
+                    operations = self.models.execute_kw(
+                        self.config['database'],
+                        self.uid,
+                        self.config['password'],
+                        'mrp.routing.workcenter',
+                        'read',
+                        [routing['operation_ids']],
+                        {
+                            'fields': [
+                                'name',
+                                'workcenter_id',
+                                'time_cycle_manual',
+                                'time_cycle',
+                                'sequence',
+                                'active'
+                            ]
+                        }
+                    )
                 
                 # Obtener información adicional de los centros de trabajo
                 for op in operations:
