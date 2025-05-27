@@ -89,9 +89,17 @@ class ExcelExporter:
         cell.alignment = Alignment(horizontal="center")
         cell.style = style
         
-        # Costo
+        # Costo del Producto
         cell = self.ws.cell(row=self.current_row, column=5)
-        cell.value = line['cost']
+        cell.value = line['product_cost']
+        cell.border = self.border
+        cell.alignment = Alignment(horizontal="right")
+        cell.number_format = '"$"#,##0.00'
+        cell.style = style
+        
+        # Costo de Materiales
+        cell = self.ws.cell(row=self.current_row, column=6)
+        cell.value = line['material_cost']
         cell.border = self.border
         cell.alignment = Alignment(horizontal="right")
         cell.number_format = '"$"#,##0.00'
@@ -171,26 +179,49 @@ class ExcelExporter:
             cell.font = Font(bold=True, size=12)
             self.current_row += 2
             
-            info_data = [
-                ("Rutas:", ", ".join(bom_data['routes'])),
-                ("Costo del producto:", f"${bom_data['product_cost']:.2f}"),
-                ("Costo total de materiales:", f"${bom_data['total_material_cost']:.2f}")
+            # Sección de costos
+            cell = self.ws.cell(row=self.current_row, column=1)
+            cell.value = "Costos"
+            cell.font = Font(bold=True)
+            self.current_row += 1
+            
+            cost_data = [
+                ("Costo del producto (standard_price):", f"${bom_data['product_cost']:.2f}"),
+                ("Costo total de materiales:", f"${bom_data['total_material_cost']:.2f}"),
+                ("Diferencia:", f"${(bom_data['product_cost'] - bom_data['total_material_cost']):.2f}")
             ]
             
-            for label, value in info_data:
+            for label, value in cost_data:
                 cell = self.ws.cell(row=self.current_row, column=1)
                 cell.value = label
                 cell.font = Font(bold=True)
                 
                 cell = self.ws.cell(row=self.current_row, column=2)
                 cell.value = value
+                if "Diferencia" in label:
+                    diff = bom_data['product_cost'] - bom_data['total_material_cost']
+                    if diff < 0:
+                        cell.font = Font(color="FF0000")  # Rojo si es negativo
+                    elif diff > 0:
+                        cell.font = Font(color="008000")  # Verde si es positivo
                 
                 self.current_row += 1
             
-            self.current_row += 2
+            self.current_row += 1
+            
+            # Sección de rutas
+            if bom_data['routes']:
+                cell = self.ws.cell(row=self.current_row, column=1)
+                cell.value = "Rutas de fabricación:"
+                cell.font = Font(bold=True)
+                
+                cell = self.ws.cell(row=self.current_row, column=2)
+                cell.value = ", ".join(bom_data['routes'])
+                
+                self.current_row += 2
             
             # Configurar encabezados de la BOM
-            headers = ["Código", "Componente", "Cantidad", "Unidad", "Costo"]
+            headers = ["Código", "Componente", "Cantidad", "Unidad", "Costo Producto", "Costo Materiales"]
             for col, header in enumerate(headers, start=1):
                 cell = self.ws.cell(row=self.current_row, column=col)
                 cell.value = header
@@ -206,7 +237,8 @@ class ExcelExporter:
             self.ws.column_dimensions['B'].width = 60  # Componente (más ancho para indentación)
             self.ws.column_dimensions['C'].width = 12  # Cantidad
             self.ws.column_dimensions['D'].width = 12  # Unidad
-            self.ws.column_dimensions['E'].width = 15  # Costo
+            self.ws.column_dimensions['E'].width = 15  # Costo Producto
+            self.ws.column_dimensions['F'].width = 15  # Costo Materiales
             
             # Procesar cada línea de la BOM
             for line in bom_data['lines']:

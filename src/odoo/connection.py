@@ -258,8 +258,22 @@ class OdooConnection:
                     {'fields': ['standard_price', 'product_tmpl_id']}
                 )[0]
                 
-                line_cost = float(component_info['standard_price']) * float(line['product_qty'])
-                total_material_cost += line_cost
+                product_cost = float(component_info['standard_price'])
+                material_cost = 0.0
+                
+                # Si la línea tiene una BOM hija, obtener su costo de materiales
+                if line['child_bom_id']:
+                    try:
+                        child_product_tmpl_id = component_info['product_tmpl_id'][0]
+                        sub_bom = self.get_bom_data(child_product_tmpl_id, level + 1)
+                        material_cost = sub_bom.get('total_material_cost', 0.0)
+                    except Exception as e:
+                        print(f"Error al obtener sub-BOM: {str(e)}")
+                
+                # Calcular costos totales
+                line_product_cost = product_cost * float(line['product_qty'])
+                line_material_cost = material_cost * float(line['product_qty'])
+                total_material_cost += line_material_cost if line_material_cost > 0 else line_product_cost
                 
                 processed_line = {
                     'product_id': line['product_id'],
@@ -267,18 +281,17 @@ class OdooConnection:
                     'product_uom_id': line['product_uom_id'],
                     'sequence': line['sequence'],
                     'level': level,
-                    'cost': line_cost,
+                    'product_cost': line_product_cost,
+                    'material_cost': line_material_cost,
                     'sub_bom': None
                 }
                 
-                # Si la línea tiene una BOM hija, obtenerla recursivamente
+                # Si tiene sub-BOM, incluirla
                 if line['child_bom_id']:
                     try:
                         child_product_tmpl_id = component_info['product_tmpl_id'][0]
                         sub_bom = self.get_bom_data(child_product_tmpl_id, level + 1)
                         processed_line['sub_bom'] = sub_bom
-                        # Añadir el costo de los sub-componentes
-                        total_material_cost += sub_bom.get('total_material_cost', 0.0)
                     except Exception as e:
                         print(f"Error al obtener sub-BOM: {str(e)}")
                 
