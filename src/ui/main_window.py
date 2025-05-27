@@ -1,13 +1,28 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, 
                                QPushButton, QComboBox, QLabel, QMessageBox,
                                QApplication)
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, Slot, QThread, Signal
 from src.ui.config_dialog import ConfigDialog
 from src.odoo.odoo_client import OdooClient
 import json
 import os
 import sys
 import traceback
+
+class OdooWorker(QThread):
+    finished = Signal(list)
+    error = Signal(str)
+    
+    def __init__(self, odoo_client):
+        super().__init__()
+        self.odoo_client = odoo_client
+    
+    def run(self):
+        try:
+            products = self.odoo_client.get_products()
+            self.finished.emit(products)
+        except Exception as e:
+            self.error.emit(str(e))
 
 def exception_handler(exc_type, exc_value, exc_traceback):
     """Manejador global de excepciones no capturadas"""
@@ -81,6 +96,7 @@ class MainWindow(QMainWindow):
             # Inicializar cliente Odoo
             print("Inicializando cliente Odoo...")
             self.odoo_client = None
+            self.worker = None
             self.load_config_and_connect()
             print("Inicialización completada...")
             
@@ -128,22 +144,18 @@ class MainWindow(QMainWindow):
             self.product_combo.clear()
             self.product_combo.addItem("Cargando productos...", None)
             self.product_combo.setEnabled(False)
-            QApplication.processEvents()
+            self.export_button.setEnabled(False)
             
-            products = self.odoo_client.get_products()
-            print(f"Productos obtenidos: {len(products)}")
+            # Crear y configurar el worker thread
+            if self.worker is not None:
+                self.worker.quit()
+                self.worker.wait()
             
-            self.product_combo.clear()
-            self.product_combo.setEnabled(True)
+            self.worker = OdooWorker(self.odoo_client)
+            self.worker.finished.connect(self.on_products_loaded)
+            self.worker.error.connect(self.on_products_error)
+            self.worker.start()
             
-            if not products:
-                self.product_combo.addItem("No se encontraron productos con BOM", None)
-                return
-                
-            for product in products:
-                self.product_combo.addItem(product['name'], product['id'])
-            print("Productos cargados exitosamente")
-                
         except Exception as e:
             print(f"Error en load_products: {str(e)}")
             traceback.print_exc()
@@ -154,6 +166,36 @@ class MainWindow(QMainWindow):
                 "Error",
                 f"Error al cargar productos: {str(e)}"
             )
+
+    def on_products_loaded(self, products):
+        """Callback cuando los productos se han cargado"""
+        try:
+            print(f"Productos obtenidos: {len(products)}")
+            self.product_combo.clear()
+            self.product_combo.setEnabled(True)
+            
+            if not products:
+                self.product_combo.addItem("No se encontraron productos con BOM", None)
+                return
+                
+            for product in products:
+                self.product_combo.addItem(product['name'], product['id'])
+            print("Productos cargados exitosamente")
+            
+        except Exception as e:
+            print(f"Error en on_products_loaded: {str(e)}")
+            traceback.print_exc()
+
+    def on_products_error(self, error_msg):
+        """Callback cuando hay un error al cargar productos"""
+        print(f"Error al cargar productos: {error_msg}")
+        self.product_combo.clear()
+        self.product_combo.setEnabled(True)
+        QMessageBox.critical(
+            self,
+            "Error",
+            f"Error al cargar productos: {error_msg}"
+        )
 
     @Slot()
     def show_config_dialog(self):
