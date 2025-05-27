@@ -156,7 +156,15 @@ class OdooConnection:
                     ['active', '=', True]
                 ]],
                 {
-                    'fields': ['product_qty', 'code', 'product_uom_id', 'bom_line_ids', 'product_tmpl_id'],
+                    'fields': [
+                        'product_qty',
+                        'code',
+                        'product_uom_id',
+                        'bom_line_ids',
+                        'product_tmpl_id',
+                        'operation_ids',
+                        'routing_id'
+                    ],
                     'limit': 1
                 }
             )
@@ -165,6 +173,57 @@ class OdooConnection:
                 raise ValueError(f"No se encontró BOM para el producto {product_id}")
             
             bom = bom[0]
+            
+            # Obtener información del producto
+            product_info = self.models.execute_kw(
+                self.config['database'],
+                self.uid,
+                self.config['password'],
+                'product.template',
+                'read',
+                [bom['product_tmpl_id'][0]],
+                {
+                    'fields': [
+                        'standard_price',  # Costo del producto
+                        'produce_delay',   # Plazo de entrega en días
+                        'route_ids'        # Rutas de fabricación
+                    ]
+                }
+            )[0]
+            
+            # Obtener operaciones de fabricación
+            operations = []
+            if bom.get('operation_ids'):
+                operations = self.models.execute_kw(
+                    self.config['database'],
+                    self.uid,
+                    self.config['password'],
+                    'mrp.routing.workcenter',
+                    'read',
+                    [bom['operation_ids']],
+                    {
+                        'fields': [
+                            'name',
+                            'workcenter_id',
+                            'time_cycle_manual',
+                            'sequence'
+                        ]
+                    }
+                )
+                operations.sort(key=lambda x: x['sequence'])
+            
+            # Obtener rutas
+            routes = []
+            if product_info.get('route_ids'):
+                routes = self.models.execute_kw(
+                    self.config['database'],
+                    self.uid,
+                    self.config['password'],
+                    'stock.route',
+                    'read',
+                    [product_info['route_ids']],
+                    {'fields': ['name']}
+                )
             
             # Obtener líneas de la BOM con campos adicionales
             lines = self.models.execute_kw(
@@ -180,41 +239,48 @@ class OdooConnection:
                         'product_qty',
                         'product_uom_id',
                         'sequence',
-                        'child_bom_id',
+                        'child_bom_id'
                     ]
                 }
             )
             
             # Procesar las líneas para asegurar que son serializables
             processed_lines = []
+            total_material_cost = 0.0
+            
             for line in lines:
+                # Obtener costo del componente
+                component_info = self.models.execute_kw(
+                    self.config['database'],
+                    self.uid,
+                    self.config['password'],
+                    'product.product',
+                    'read',
+                    [line['product_id'][0]],
+                    {'fields': ['standard_price', 'product_tmpl_id']}
+                )[0]
+                
+                line_cost = float(component_info['standard_price']) * float(line['product_qty'])
+                total_material_cost += line_cost
+                
                 processed_line = {
-                    'product_id': line['product_id'],  # Esto ya viene como tupla (id, name)
-                    'product_qty': float(line['product_qty']),  # Convertir a float por si acaso
-                    'product_uom_id': line['product_uom_id'],  # Esto ya viene como tupla (id, name)
+                    'product_id': line['product_id'],
+                    'product_qty': float(line['product_qty']),
+                    'product_uom_id': line['product_uom_id'],
                     'sequence': line['sequence'],
                     'level': level,
+                    'cost': line_cost,
                     'sub_bom': None
                 }
                 
                 # Si la línea tiene una BOM hija, obtenerla recursivamente
                 if line['child_bom_id']:
                     try:
-                        # Obtener el product_tmpl_id del producto en la línea
-                        product_info = self.models.execute_kw(
-                            self.config['database'],
-                            self.uid,
-                            self.config['password'],
-                            'product.product',
-                            'read',
-                            [line['product_id'][0]],
-                            {'fields': ['product_tmpl_id']}
-                        )
-                        if product_info:
-                            child_product_tmpl_id = product_info[0]['product_tmpl_id'][0]
-                            # Obtener la BOM del subproducto
-                            sub_bom = self.get_bom_data(child_product_tmpl_id, level + 1)
-                            processed_line['sub_bom'] = sub_bom
+                        child_product_tmpl_id = component_info['product_tmpl_id'][0]
+                        sub_bom = self.get_bom_data(child_product_tmpl_id, level + 1)
+                        processed_line['sub_bom'] = sub_bom
+                        # Añadir el costo de los sub-componentes
+                        total_material_cost += sub_bom.get('total_material_cost', 0.0)
                     except Exception as e:
                         print(f"Error al obtener sub-BOM: {str(e)}")
                 
@@ -231,7 +297,12 @@ class OdooConnection:
                 'uom': str(bom['product_uom_id'][1]) if bom['product_uom_id'] else '',
                 'product_name': str(bom['product_tmpl_id'][1]),
                 'lines': processed_lines,
-                'level': level
+                'level': level,
+                'operations': operations,
+                'lead_time': float(product_info.get('produce_delay', 0)),
+                'routes': [route['name'] for route in routes],
+                'total_material_cost': total_material_cost,
+                'product_cost': float(product_info.get('standard_price', 0))
             }
             
         except Exception as e:

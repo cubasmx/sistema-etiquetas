@@ -35,6 +35,16 @@ class ExcelExporter:
             )
             self.level_styles[i] = style
             self.wb.add_named_style(style)
+        
+        # Estilo para operaciones
+        self.operation_style = NamedStyle(name='operation')
+        self.operation_style.font = Font(italic=True)
+        self.operation_style.fill = PatternFill(
+            start_color="FFF2CC",
+            end_color="FFF2CC",
+            fill_type="solid"
+        )
+        self.wb.add_named_style(self.operation_style)
     
     def write_bom_line(self, line: Dict[str, Any], parent_qty: float = 1.0):
         """
@@ -79,12 +89,71 @@ class ExcelExporter:
         cell.alignment = Alignment(horizontal="center")
         cell.style = style
         
+        # Costo
+        cell = self.ws.cell(row=self.current_row, column=5)
+        cell.value = line['cost']
+        cell.border = self.border
+        cell.alignment = Alignment(horizontal="right")
+        cell.number_format = '"$"#,##0.00'
+        cell.style = style
+        
         self.current_row += 1
         
         # Si tiene sub-BOM, procesar recursivamente
         if line.get('sub_bom'):
             for sub_line in line['sub_bom']['lines']:
                 self.write_bom_line(sub_line, qty)
+    
+    def write_operations(self, operations: List[Dict[str, Any]]):
+        """
+        Escribe las operaciones de fabricación
+        Args:
+            operations: Lista de operaciones
+        """
+        if not operations:
+            return
+            
+        # Título de la sección
+        self.current_row += 1
+        cell = self.ws.cell(row=self.current_row, column=1)
+        cell.value = "Operaciones de fabricación"
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="left")
+        self.current_row += 1
+        
+        # Encabezados
+        headers = ["Operación", "Centro de trabajo", "Tiempo (min)"]
+        for col, header in enumerate(headers, start=1):
+            cell = self.ws.cell(row=self.current_row, column=col)
+            cell.value = header
+            cell.font = self.header_font
+            cell.fill = self.header_fill
+            cell.alignment = self.header_alignment
+            cell.border = self.border
+        self.current_row += 1
+        
+        # Datos de operaciones
+        for op in operations:
+            # Operación
+            cell = self.ws.cell(row=self.current_row, column=1)
+            cell.value = op['name']
+            cell.border = self.border
+            cell.style = self.operation_style
+            
+            # Centro de trabajo
+            cell = self.ws.cell(row=self.current_row, column=2)
+            cell.value = op['workcenter_id'][1] if op['workcenter_id'] else ''
+            cell.border = self.border
+            cell.style = self.operation_style
+            
+            # Tiempo
+            cell = self.ws.cell(row=self.current_row, column=3)
+            cell.value = op['time_cycle_manual']
+            cell.border = self.border
+            cell.alignment = Alignment(horizontal="center")
+            cell.style = self.operation_style
+            
+            self.current_row += 1
     
     def export_bom(self, bom_data: Dict[str, Any], product_name: str) -> str:
         """
@@ -96,8 +165,33 @@ class ExcelExporter:
             str: Ruta del archivo generado
         """
         try:
-            # Configurar encabezados
-            headers = ["Código", "Componente", "Cantidad", "Unidad"]
+            # Información del producto
+            cell = self.ws.cell(row=self.current_row, column=1)
+            cell.value = "Información del producto"
+            cell.font = Font(bold=True, size=12)
+            self.current_row += 2
+            
+            info_data = [
+                ("Plazo de entrega:", f"{bom_data['lead_time']} días"),
+                ("Rutas:", ", ".join(bom_data['routes'])),
+                ("Costo del producto:", f"${bom_data['product_cost']:.2f}"),
+                ("Costo total de materiales:", f"${bom_data['total_material_cost']:.2f}")
+            ]
+            
+            for label, value in info_data:
+                cell = self.ws.cell(row=self.current_row, column=1)
+                cell.value = label
+                cell.font = Font(bold=True)
+                
+                cell = self.ws.cell(row=self.current_row, column=2)
+                cell.value = value
+                
+                self.current_row += 1
+            
+            self.current_row += 2
+            
+            # Configurar encabezados de la BOM
+            headers = ["Código", "Componente", "Cantidad", "Unidad", "Costo"]
             for col, header in enumerate(headers, start=1):
                 cell = self.ws.cell(row=self.current_row, column=col)
                 cell.value = header
@@ -113,10 +207,15 @@ class ExcelExporter:
             self.ws.column_dimensions['B'].width = 60  # Componente (más ancho para indentación)
             self.ws.column_dimensions['C'].width = 12  # Cantidad
             self.ws.column_dimensions['D'].width = 12  # Unidad
+            self.ws.column_dimensions['E'].width = 15  # Costo
             
             # Procesar cada línea de la BOM
             for line in bom_data['lines']:
                 self.write_bom_line(line)
+            
+            # Añadir operaciones
+            if bom_data.get('operations'):
+                self.write_operations(bom_data['operations'])
             
             # Crear directorio de exportación si no existe
             export_dir = "exports"
