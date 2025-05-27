@@ -1,63 +1,83 @@
-# Sistema de Etiquetas ZPL
+# Exportador de Lista de Materiales (BOM)
 
-Sistema de impresión de etiquetas con soporte para impresoras ZPL y transformación de archivos Excel a CSV.
+Aplicación de escritorio para exportar listas de materiales desde Odoo a Excel.
+
+## Características
+
+- Interfaz gráfica intuitiva
+- Conexión directa a Odoo
+- Exportación a Excel con formato profesional
+- Soporte para múltiples productos
+- Configuración personalizable
 
 ## Requisitos
 
 - Python 3.8 o superior
-- PyQt6
-- pandas
-- openpyxl
+- Acceso a un servidor Odoo
+- Credenciales de usuario con permisos para acceder a las listas de materiales
 
 ## Instalación
 
-1. Clone este repositorio:
+1. Clonar el repositorio:
 ```bash
-git clone [URL_DEL_REPOSITORIO]
+git clone https://github.com/tuusuario/sistema-etiquetas.git
 cd sistema-etiquetas
 ```
 
-2. Instale las dependencias:
+2. Crear un entorno virtual (recomendado):
 ```bash
-pip install PyQt6 pandas openpyxl
+python -m venv venv
+source venv/bin/activate  # En Linux/Mac
+venv\Scripts\activate     # En Windows
 ```
 
-## Configuración
-
-1. Configure la impresora ZPL:
-   - La dirección IP predeterminada es "10.10.2.34"
-   - El puerto predeterminado es 9100
-   - Puede modificar estos valores en `PythonApplication1.py`
-
-2. Prepare sus archivos:
-   - Use archivos CSV para los datos de productos
-   - O utilice el transformador incluido para convertir archivos Excel a CSV
+3. Instalar dependencias:
+```bash
+pip install -r requirements.txt
+```
 
 ## Uso
 
-1. Ejecute la aplicación:
+1. Ejecutar la aplicación:
 ```bash
-python PythonApplication1.py
+python main.py
 ```
 
-2. Funcionalidades principales:
-   - Carga y lectura de archivos CSV
-   - Búsqueda de productos por ID o nombre
-   - Impresión de etiquetas con códigos de barras
-   - Transformación de archivos Excel a CSV
-   - Soporte para versiones SGC y números de OP
-   - Impresión múltiple de etiquetas
+2. En el primer inicio, configurar la conexión a Odoo:
+   - URL del servidor
+   - Base de datos
+   - Usuario
+   - Contraseña
+   - Puerto (443 para Odoo SaaS, 8069 para instalaciones locales)
 
-## Características
+3. Seleccionar un producto de la lista desplegable
 
-- Interfaz gráfica intuitiva con PyQt6
-- Soporte para caracteres especiales (UTF-8 y Latin-1)
-- Generación de códigos de barras en formato ZPL
-- Transformador de Excel a CSV incluido
-- Funcionamiento local sin necesidad de conexión a internet
+4. Hacer clic en "Exportar BOM"
 
-## Notas
+Los archivos exportados se guardarán en la carpeta `exports` con el formato:
+`BOM_[nombre_producto]_[fecha]_[hora].xlsx`
 
-- La aplicación ha sido probada y funciona correctamente en Windows
-- Asegúrese de que la impresora ZPL esté conectada y accesible en la red
-- Los archivos CSV deben estar correctamente formateados con las columnas necesarias 
+## Estructura del Proyecto
+
+```
+sistema-etiquetas/
+├── src/
+│   ├── ui/
+│   │   ├── __init__.py
+│   │   ├── main_window.py
+│   │   └── config_dialog.py
+│   ├── odoo/
+│   │   ├── __init__.py
+│   │   └── connection.py
+│   └── export/
+│       ├── __init__.py
+│       └── excel_exporter.py
+├── exports/
+├── main.py
+├── requirements.txt
+└── README.md
+```
+
+## Soporte
+
+Para reportar problemas o sugerir mejoras, por favor crear un issue en el repositorio. 
