@@ -172,7 +172,6 @@ class ExcelExporter:
             self.current_row += 2
             
             info_data = [
-                ("Plazo de entrega:", f"{bom_data['lead_time']} días"),
                 ("Rutas:", ", ".join(bom_data['routes'])),
                 ("Costo del producto:", f"${bom_data['product_cost']:.2f}"),
                 ("Costo total de materiales:", f"${bom_data['total_material_cost']:.2f}")

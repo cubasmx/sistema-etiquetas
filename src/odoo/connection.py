@@ -162,8 +162,7 @@ class OdooConnection:
                         'product_uom_id',
                         'bom_line_ids',
                         'product_tmpl_id',
-                        'operation_ids',
-                        'routing_id'
+                        'operation_ids'
                     ],
                     'limit': 1
                 }
@@ -185,7 +184,6 @@ class OdooConnection:
                 {
                     'fields': [
                         'standard_price',  # Costo del producto
-                        'produce_delay',   # Plazo de entrega en días
                         'route_ids'        # Rutas de fabricación
                     ]
                 }
@@ -299,7 +297,6 @@ class OdooConnection:
                 'lines': processed_lines,
                 'level': level,
                 'operations': operations,
-                'lead_time': float(product_info.get('produce_delay', 0)),
                 'routes': [route['name'] for route in routes],
                 'total_material_cost': total_material_cost,
                 'product_cost': float(product_info.get('standard_price', 0))

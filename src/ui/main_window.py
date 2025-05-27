@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, 
                                QPushButton, QComboBox, QLabel, QMessageBox,
-                               QApplication)
+                               QApplication, QLineEdit, QHBoxLayout)
 from PySide6.QtCore import Qt, Slot
 from src.ui.config_dialog import ConfigDialog
 from src.odoo.connection import OdooConnection
@@ -17,6 +17,9 @@ class MainWindow(QMainWindow):
         
         # Inicializar conexión Odoo
         self.odoo = OdooConnection()
+        
+        # Almacenar productos para búsqueda
+        self.all_products = []
         
         # Widget central
         central_widget = QWidget()
@@ -36,8 +39,21 @@ class MainWindow(QMainWindow):
         self.status_label.setStyleSheet("color: gray;")
         layout.addWidget(self.status_label)
         
+        # Búsqueda y selector de productos
+        search_label = QLabel("Buscar producto:")
+        layout.addWidget(search_label)
+        
+        # Campo de búsqueda
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Escriba para buscar...")
+        self.search_input.textChanged.connect(self.filter_products)
+        layout.addWidget(self.search_input)
+        
+        # Contador de resultados
+        self.results_label = QLabel()
+        layout.addWidget(self.results_label)
+        
         # Selector de productos
-        layout.addWidget(QLabel("Productos con Lista de Materiales:"))
         self.product_combo = QComboBox()
         self.product_combo.setPlaceholderText("Seleccione un producto")
         self.product_combo.setMinimumWidth(400)
@@ -68,6 +84,35 @@ class MainWindow(QMainWindow):
         
         # Cargar configuración inicial
         self.check_config()
+
+    def filter_products(self, search_text: str):
+        """Filtra los productos basado en el texto de búsqueda"""
+        self.product_combo.clear()
+        
+        if not search_text:
+            # Si no hay texto de búsqueda, mostrar todos los productos
+            filtered_products = self.all_products
+        else:
+            # Filtrar por código o nombre, ignorando mayúsculas/minúsculas
+            search_text = search_text.lower()
+            filtered_products = [
+                product for product in self.all_products
+                if search_text in product['name'].lower() or
+                   (product.get('default_code') and search_text in product['default_code'].lower())
+            ]
+        
+        # Actualizar el combo box con los productos filtrados
+        for product in filtered_products:
+            display_name = f"[{product['default_code']}] {product['name']}" if product.get('default_code') else product['name']
+            self.product_combo.addItem(display_name, product['id'])
+        
+        # Actualizar contador de resultados
+        total = len(self.all_products)
+        filtered = len(filtered_products)
+        if search_text:
+            self.results_label.setText(f"Mostrando {filtered} de {total} productos")
+        else:
+            self.results_label.setText(f"Total: {total} productos")
 
     def check_config(self):
         """Verifica si existe configuración y conecta con Odoo"""
@@ -107,10 +152,9 @@ class MainWindow(QMainWindow):
     def load_products(self):
         """Carga los productos con BOM desde Odoo"""
         try:
-            products = self.odoo.get_bom_products()
-            self.product_combo.clear()
+            self.all_products = self.odoo.get_bom_products()
             
-            if not products:
+            if not self.all_products:
                 QMessageBox.information(
                     self,
                     "Sin productos",
@@ -118,10 +162,8 @@ class MainWindow(QMainWindow):
                 )
                 return
             
-            for product in products:
-                # Usar código si existe, sino nombre
-                display_name = f"[{product['default_code']}] {product['name']}" if product.get('default_code') else product['name']
-                self.product_combo.addItem(display_name, product['id'])
+            # Mostrar todos los productos inicialmente
+            self.filter_products("")
                 
         except Exception as e:
             QMessageBox.critical(
