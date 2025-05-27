@@ -162,7 +162,7 @@ class OdooConnection:
                         'product_uom_id',
                         'bom_line_ids',
                         'product_tmpl_id',
-                        'operation_ids'
+                        'workorder_ids'
                     ],
                     'limit': 1
                 }
@@ -191,23 +191,22 @@ class OdooConnection:
             
             # Obtener operaciones de fabricación
             operations = []
-            if bom.get('operation_ids'):
+            if bom.get('workorder_ids'):
                 operations = self.models.execute_kw(
                     self.config['database'],
                     self.uid,
                     self.config['password'],
-                    'mrp.operation',
+                    'mrp.workorder',
                     'read',
-                    [bom['operation_ids']],
+                    [bom['workorder_ids']],
                     {
                         'fields': [
                             'name',
                             'workcenter_id',
+                            'duration_expected',
                             'time_cycle_manual',
-                            'time_cycle',
                             'sequence',
-                            'workorder_count',
-                            'active'
+                            'state'
                         ]
                     }
                 )
