@@ -196,7 +196,7 @@ class OdooConnection:
                     self.config['database'],
                     self.uid,
                     self.config['password'],
-                    'mrp.routing.workcenter',
+                    'mrp.operation',
                     'read',
                     [bom['operation_ids']],
                     {
