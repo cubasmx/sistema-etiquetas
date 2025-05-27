@@ -122,15 +122,24 @@ class ExcelExporter:
             return
             
         # Título de la sección
-        self.current_row += 1
+        self.current_row += 2
         cell = self.ws.cell(row=self.current_row, column=1)
         cell.value = "Operaciones de fabricación"
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="left")
-        self.current_row += 1
+        cell.font = Font(bold=True, size=12)
+        self.current_row += 2
         
         # Encabezados
-        headers = ["Operación", "Centro de trabajo", "Tiempo (min)"]
+        headers = [
+            "Secuencia",
+            "Operación",
+            "Centro de trabajo",
+            "Tiempo (min)",
+            "Eficiencia",
+            "Capacidad",
+            "Costo/hora",
+            "Costo Total"
+        ]
+        
         for col, header in enumerate(headers, start=1):
             cell = self.ws.cell(row=self.current_row, column=col)
             cell.value = header
@@ -138,30 +147,98 @@ class ExcelExporter:
             cell.fill = self.header_fill
             cell.alignment = self.header_alignment
             cell.border = self.border
+        
+        # Ajustar ancho de columnas para operaciones
+        self.ws.column_dimensions['A'].width = 10  # Secuencia
+        self.ws.column_dimensions['B'].width = 40  # Operación
+        self.ws.column_dimensions['C'].width = 30  # Centro de trabajo
+        self.ws.column_dimensions['D'].width = 15  # Tiempo
+        self.ws.column_dimensions['E'].width = 12  # Eficiencia
+        self.ws.column_dimensions['F'].width = 12  # Capacidad
+        self.ws.column_dimensions['G'].width = 15  # Costo/hora
+        self.ws.column_dimensions['H'].width = 15  # Costo Total
+        
         self.current_row += 1
+        total_operation_cost = 0.0
         
         # Datos de operaciones
         for op in operations:
-            # Operación
+            # Secuencia
             cell = self.ws.cell(row=self.current_row, column=1)
+            cell.value = op['sequence']
+            cell.border = self.border
+            cell.alignment = Alignment(horizontal="center")
+            cell.style = self.operation_style
+            
+            # Operación
+            cell = self.ws.cell(row=self.current_row, column=2)
             cell.value = op['name']
             cell.border = self.border
             cell.style = self.operation_style
             
             # Centro de trabajo
-            cell = self.ws.cell(row=self.current_row, column=2)
+            cell = self.ws.cell(row=self.current_row, column=3)
             cell.value = op['workcenter_id'][1] if op['workcenter_id'] else ''
             cell.border = self.border
             cell.style = self.operation_style
             
             # Tiempo
-            cell = self.ws.cell(row=self.current_row, column=3)
-            cell.value = op['time_cycle_manual']
+            time_value = op['time_cycle_manual'] or op['time_cycle'] or 0.0
+            cell = self.ws.cell(row=self.current_row, column=4)
+            cell.value = time_value
             cell.border = self.border
             cell.alignment = Alignment(horizontal="center")
             cell.style = self.operation_style
+            cell.number_format = '#,##0.00'
             
+            # Eficiencia
+            cell = self.ws.cell(row=self.current_row, column=5)
+            cell.value = op.get('efficiency', 1.0)
+            cell.border = self.border
+            cell.alignment = Alignment(horizontal="center")
+            cell.style = self.operation_style
+            cell.number_format = '0%'
+            
+            # Capacidad
+            cell = self.ws.cell(row=self.current_row, column=6)
+            cell.value = op.get('capacity', 1.0)
+            cell.border = self.border
+            cell.alignment = Alignment(horizontal="center")
+            cell.style = self.operation_style
+            cell.number_format = '#,##0.00'
+            
+            # Costo por hora (del centro de trabajo)
+            if op['workcenter_id']:
+                cell = self.ws.cell(row=self.current_row, column=7)
+                cell.value = float(op.get('costs_hour', 0.0))
+                cell.border = self.border
+                cell.alignment = Alignment(horizontal="right")
+                cell.style = self.operation_style
+                cell.number_format = '"$"#,##0.00'
+            
+            # Costo total de la operación
+            cell = self.ws.cell(row=self.current_row, column=8)
+            operation_cost = float(op.get('operation_cost', 0.0))
+            cell.value = operation_cost
+            cell.border = self.border
+            cell.alignment = Alignment(horizontal="right")
+            cell.style = self.operation_style
+            cell.number_format = '"$"#,##0.00'
+            
+            total_operation_cost += operation_cost
             self.current_row += 1
+        
+        # Agregar total de costos de operaciones
+        self.current_row += 1
+        cell = self.ws.cell(row=self.current_row, column=7)
+        cell.value = "Costo Total Operaciones:"
+        cell.font = Font(bold=True)
+        
+        cell = self.ws.cell(row=self.current_row, column=8)
+        cell.value = total_operation_cost
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="right")
+        cell.number_format = '"$"#,##0.00'
     
     def export_bom(self, bom_data: Dict[str, Any], product_name: str) -> str:
         """

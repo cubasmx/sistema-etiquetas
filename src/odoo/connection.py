@@ -204,10 +204,40 @@ class OdooConnection:
                             'name',
                             'workcenter_id',
                             'time_cycle_manual',
-                            'sequence'
+                            'time_cycle',
+                            'sequence',
+                            'workorder_count',
+                            'active'
                         ]
                     }
                 )
+                
+                # Obtener información adicional de los centros de trabajo
+                for op in operations:
+                    if op['workcenter_id']:
+                        workcenter = self.models.execute_kw(
+                            self.config['database'],
+                            self.uid,
+                            self.config['password'],
+                            'mrp.workcenter',
+                            'read',
+                            [op['workcenter_id'][0]],
+                            {
+                                'fields': [
+                                    'costs_hour',
+                                    'time_efficiency',
+                                    'capacity'
+                                ]
+                            }
+                        )[0]
+                        
+                        # Calcular costo de la operación
+                        time_hours = float(op['time_cycle_manual'] or op['time_cycle'] or 0.0) / 60.0  # Convertir minutos a horas
+                        op['operation_cost'] = time_hours * float(workcenter.get('costs_hour', 0.0))
+                        op['efficiency'] = float(workcenter.get('time_efficiency', 1.0))
+                        op['capacity'] = float(workcenter.get('capacity', 1.0))
+                
+                # Ordenar operaciones por secuencia
                 operations.sort(key=lambda x: x['sequence'])
             
             # Obtener rutas
