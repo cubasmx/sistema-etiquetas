@@ -22,55 +22,72 @@ def exception_handler(exc_type, exc_value, exc_traceback):
 
 class MainWindow(QMainWindow):
     def __init__(self):
+        print("Iniciando MainWindow...")
         super().__init__()
         self.setWindowTitle("Exportador de BOM")
-        self.setGeometry(100, 100, 600, 400)  # Ventana más grande
+        self.setGeometry(100, 100, 600, 400)
+        print("Configurando ventana principal...")
         
         # Crear widget central y layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
-        layout.setSpacing(10)  # Espacio entre widgets
-        layout.setContentsMargins(20, 20, 20, 20)  # Márgenes
+        layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
+        print("Layout principal configurado...")
         
-        # Crear y configurar widgets
-        title_label = QLabel("Exportador de Lista de Materiales")
-        title_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px;")
-        
-        self.product_combo = QComboBox()
-        self.product_combo.setPlaceholderText("Seleccione un producto")
-        self.product_combo.setMinimumWidth(400)
-        
-        self.export_button = QPushButton("Exportar BOM")
-        self.export_button.setEnabled(False)
-        self.export_button.setMinimumWidth(120)
-        
-        self.config_button = QPushButton("Configuración")
-        self.config_button.setMinimumWidth(120)
-        
-        # Añadir widgets al layout
-        layout.addWidget(title_label, alignment=Qt.AlignCenter)
-        layout.addSpacing(20)
-        
-        layout.addWidget(QLabel("Productos con Lista de Materiales:"))
-        layout.addWidget(self.product_combo)
-        layout.addSpacing(10)
-        
-        button_layout = QVBoxLayout()
-        button_layout.addWidget(self.export_button)
-        button_layout.addWidget(self.config_button)
-        layout.addLayout(button_layout)
-        
-        layout.addStretch()  # Espacio flexible al final
-        
-        # Conectar señales
-        self.config_button.clicked.connect(self.show_config_dialog)
-        self.export_button.clicked.connect(self.export_bom)
-        self.product_combo.currentIndexChanged.connect(self.on_product_selected)
-        
-        # Inicializar cliente Odoo
-        self.odoo_client = None
-        self.load_config_and_connect()
+        try:
+            # Crear y configurar widgets
+            print("Creando widgets...")
+            title_label = QLabel("Exportador de Lista de Materiales")
+            title_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px;")
+            
+            self.product_combo = QComboBox()
+            self.product_combo.setPlaceholderText("Seleccione un producto")
+            self.product_combo.setMinimumWidth(400)
+            
+            self.export_button = QPushButton("Exportar BOM")
+            self.export_button.setEnabled(False)
+            self.export_button.setMinimumWidth(120)
+            
+            self.config_button = QPushButton("Configuración")
+            self.config_button.setMinimumWidth(120)
+            print("Widgets creados exitosamente...")
+            
+            # Añadir widgets al layout
+            print("Añadiendo widgets al layout...")
+            layout.addWidget(title_label, alignment=Qt.AlignCenter)
+            layout.addSpacing(20)
+            
+            layout.addWidget(QLabel("Productos con Lista de Materiales:"))
+            layout.addWidget(self.product_combo)
+            layout.addSpacing(10)
+            
+            button_layout = QVBoxLayout()
+            button_layout.addWidget(self.export_button)
+            button_layout.addWidget(self.config_button)
+            layout.addLayout(button_layout)
+            
+            layout.addStretch()
+            print("Widgets añadidos al layout...")
+            
+            # Conectar señales
+            print("Conectando señales...")
+            self.config_button.clicked.connect(self.show_config_dialog)
+            self.export_button.clicked.connect(self.export_bom)
+            self.product_combo.currentIndexChanged.connect(self.on_product_selected)
+            print("Señales conectadas...")
+            
+            # Inicializar cliente Odoo
+            print("Inicializando cliente Odoo...")
+            self.odoo_client = None
+            self.load_config_and_connect()
+            print("Inicialización completada...")
+            
+        except Exception as e:
+            print(f"Error durante la inicialización: {str(e)}")
+            traceback.print_exc()
+            raise
 
     def load_config_and_connect(self):
         """Carga la configuración y conecta con Odoo"""
@@ -96,6 +113,8 @@ class MainWindow(QMainWindow):
                     "Por favor configure la conexión a Odoo"
                 )
         except Exception as e:
+            print(f"Error en load_config_and_connect: {str(e)}")
+            traceback.print_exc()
             QMessageBox.critical(
                 self,
                 "Error de conexión",
@@ -105,12 +124,14 @@ class MainWindow(QMainWindow):
     def load_products(self):
         """Carga la lista de productos en el combo"""
         try:
+            print("Iniciando carga de productos...")
             self.product_combo.clear()
             self.product_combo.addItem("Cargando productos...", None)
             self.product_combo.setEnabled(False)
-            QApplication.processEvents()  # Permitir que la UI se actualice
+            QApplication.processEvents()
             
             products = self.odoo_client.get_products()
+            print(f"Productos obtenidos: {len(products)}")
             
             self.product_combo.clear()
             self.product_combo.setEnabled(True)
@@ -121,8 +142,11 @@ class MainWindow(QMainWindow):
                 
             for product in products:
                 self.product_combo.addItem(product['name'], product['id'])
+            print("Productos cargados exitosamente")
                 
         except Exception as e:
+            print(f"Error en load_products: {str(e)}")
+            traceback.print_exc()
             self.product_combo.clear()
             self.product_combo.setEnabled(True)
             QMessageBox.critical(
@@ -134,21 +158,29 @@ class MainWindow(QMainWindow):
     @Slot()
     def show_config_dialog(self):
         """Muestra el diálogo de configuración"""
-        dialog = ConfigDialog(self)
-        if dialog.exec():
-            self.load_config_and_connect()
+        try:
+            print("Mostrando diálogo de configuración...")
+            dialog = ConfigDialog(self)
+            if dialog.exec():
+                self.load_config_and_connect()
+            print("Diálogo de configuración cerrado")
+        except Exception as e:
+            print(f"Error en show_config_dialog: {str(e)}")
+            traceback.print_exc()
 
     @Slot()
     def export_bom(self):
         """Exporta la lista de materiales del producto seleccionado"""
         try:
+            print("Iniciando exportación de BOM...")
             product_id = self.product_combo.currentData()
             if product_id and self.odoo_client:
                 self.export_button.setEnabled(False)
                 self.export_button.setText("Exportando...")
-                QApplication.processEvents()  # Permitir que la UI se actualice
+                QApplication.processEvents()
                 
                 filename = self.odoo_client.export_bom(product_id)
+                print(f"BOM exportada a: {filename}")
                 
                 self.export_button.setEnabled(True)
                 self.export_button.setText("Exportar BOM")
@@ -159,6 +191,8 @@ class MainWindow(QMainWindow):
                     f"BOM exportada correctamente a:\n{filename}"
                 )
         except Exception as e:
+            print(f"Error en export_bom: {str(e)}")
+            traceback.print_exc()
             self.export_button.setEnabled(True)
             self.export_button.setText("Exportar BOM")
             QMessageBox.critical(
@@ -170,24 +204,40 @@ class MainWindow(QMainWindow):
     @Slot(int)
     def on_product_selected(self, index):
         """Habilita/deshabilita el botón de exportar según la selección"""
-        self.export_button.setEnabled(index >= 0 and self.product_combo.currentData() is not None)
+        try:
+            self.export_button.setEnabled(index >= 0 and self.product_combo.currentData() is not None)
+        except Exception as e:
+            print(f"Error en on_product_selected: {str(e)}")
+            traceback.print_exc()
 
 def main():
-    # Configurar el manejador de excepciones global
-    sys.excepthook = exception_handler
-    
-    # Crear y ejecutar la aplicación
-    app = QApplication(sys.argv)
-    
-    # Establecer el estilo de la aplicación
-    app.setStyle('Fusion')
-    
-    # Crear y mostrar la ventana principal
-    window = MainWindow()
-    window.show()
-    
-    # Ejecutar el bucle de eventos
-    return app.exec()
+    try:
+        print("\n=== Iniciando aplicación ===")
+        # Configurar el manejador de excepciones global
+        sys.excepthook = exception_handler
+        
+        # Crear y ejecutar la aplicación
+        print("Creando aplicación Qt...")
+        app = QApplication(sys.argv)
+        
+        # Establecer el estilo de la aplicación
+        print("Configurando estilo...")
+        app.setStyle('Fusion')
+        
+        # Crear y mostrar la ventana principal
+        print("Creando ventana principal...")
+        window = MainWindow()
+        print("Mostrando ventana principal...")
+        window.show()
+        
+        # Ejecutar el bucle de eventos
+        print("Iniciando bucle de eventos...")
+        return app.exec()
+    except Exception as e:
+        print(f"Error fatal en main: {str(e)}")
+        traceback.print_exc()
+        return 1
 
 if __name__ == '__main__':
+    print("Iniciando programa...")
     sys.exit(main()) 
